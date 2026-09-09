@@ -1,0 +1,54 @@
+{
+  "name": "skin-forge",
+  "version": "0.5.0",
+  "private": true,
+  "description": "Lokaler Minecraft Skin Editor mit validiertem KI-Pixel-Harness",
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build && node scripts/build-electron.mjs",
+    "start": "node scripts/start.mjs",
+    "test": "vitest run",
+    "test:e2e": "node scripts/smoke.mjs",
+    "format": "prettier --write src electron scripts vite.config.ts index.html package.json tsconfig.json",
+    "package": "npm run build && electron-builder --win portable"
+  },
+  "build": {
+    "appId": "local.skinforge.editor",
+    "productName": "Skin Forge",
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "release/${version}"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "portable",
+      "signAndEditExecutable": false
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.4.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@types/three": "^0.185.4",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "lucide-react": "^1.42.0",
+    "prettier": "^3.9.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "^0.185.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^5.0.0"
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-electron/
+release/
+artifacts/
+Example/
+Results/
+*.local
+.env*
+!.env.example

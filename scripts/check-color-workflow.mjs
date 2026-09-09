@@ -1,0 +1,31 @@
+import {_electron as electron,expect} from '@playwright/test';
+import path from 'node:path';
+const env={...process.env,SKIN_FORGE_TEST_DATA:path.resolve(`artifacts/color-workflow-${Date.now()}`)};delete env.ELECTRON_RUN_AS_NODE;
+const app=await electron.launch({args:['.'],env});
+try {
+ const page=await app.firstWindow();
+ await expect(page.getByRole('heading',{name:'Skin-Vorschau'})).toBeVisible();
+ const brush=page.getByRole('button',{name:'Stift',exact:true});
+ await page.getByRole('button',{name:'Radierer',exact:true}).click();
+ await page.getByRole('button',{name:'Farbe #ff0000',exact:true}).click();
+ await expect(brush).toHaveAttribute('aria-pressed','true');
+ const canvas=page.getByTestId('face-canvas');await canvas.scrollIntoViewIfNeeded();
+ const b=await canvas.boundingBox();
+ const a={x:b.x+b.width*.2,y:b.y+b.height*.2},c={x:b.x+b.width*.8,y:b.y+b.height*.8};
+ await page.mouse.click(a.x,a.y);await page.waitForTimeout(600);
+ await page.getByRole('button',{name:'Pipette',exact:true}).click();
+ await page.getByLabel('Eigene Farbe').fill('#00ff00');
+ await expect(brush).toHaveAttribute('aria-pressed','true');
+ await page.getByRole('button',{name:'Pipette',exact:true}).click();
+ await canvas.scrollIntoViewIfNeeded();
+ const stored=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('skin-forge-project-v1')).pixels);
+ const before=await stored();
+ await page.mouse.move(a.x,a.y);await page.mouse.down();
+ await expect(brush).toHaveAttribute('aria-pressed','true');
+ await expect(page.getByLabel('Eigene Farbe')).toHaveValue('#ff0000');
+ await page.mouse.move(c.x,c.y,{steps:10});await page.mouse.up();await page.waitForTimeout(600);
+ expect(await stored()).toEqual(before);
+ await page.mouse.click(c.x,c.y);await page.waitForTimeout(600);
+ expect(await stored()).not.toEqual(before);
+ console.log('Color workflow passed: palette, color dialog and eyedropper activate brush; sampling drag never paints, next click paints. Heading unchanged.');
+} finally {await app.close();}
