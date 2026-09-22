@@ -1,3 +1,4 @@
+import { fixedPortrait } from "../src/core/style-profile";
 import type { GenerationRequest, GridPatch } from "../src/core/harness";
 import { outputSchema, validatePatch, applyPatch } from "../src/core/harness";
 import { indexAt, rgba, type Skin } from "../src/core/skin";
@@ -199,7 +200,7 @@ export function applyFeatureReview(
   const layers = Object.fromEntries(
     FEATURE_ORDER.map((f) => [f, [...v.layers[f]]]),
   ) as Record<Feature, string[]>;
-  if (r.humanFace) {
+  if (fixedPortrait(r)) {
     const empty = transparentToken(r.palette.length);
     for (const [feature, allowedRows] of [
       ["eyes", [3]],
@@ -245,7 +246,7 @@ export function applyFeatureReview(
           transparentToken(r.palette.length)
         )
           color = splitRow(layers[feature][y], r.palette.length)[x];
-      if (r.humanFace && y === 3 && [1, 2, 5, 6].includes(x))
+      if (fixedPortrait(r) && y === 3 && [1, 2, 5, 6].includes(x))
         color = splitRow(layers.eyes[y], r.palette.length)[x];
       return color;
     }).join(""),

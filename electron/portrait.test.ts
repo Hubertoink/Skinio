@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { stylePreset } from "../src/core/style-profile";
 import {
   validatePortrait,
   portraitPalette,
@@ -35,6 +36,33 @@ const review = () => ({
   notes: "Augen geprüft",
 });
 describe("granular portrait analysis and final review", () => {
+  it("preserves multi-row anime eyes instead of replacing them with portrait pupils", () => {
+    const request = {
+      ...r,
+      humanFace: true,
+      styleProfile: stylePreset("anime"),
+      palette: portraitPalette(PALETTE, design),
+    };
+    const skin = SYMBOLS[request.palette.indexOf(design.skinBase)];
+    const dark = SYMBOLS[request.palette.indexOf("#100f0e")];
+    const layers = Object.fromEntries(
+      FEATURE_ORDER.map((f) => [
+        f,
+        Array(8).fill(f === "skin" ? skin.repeat(8) : "........"),
+      ]),
+    );
+    layers.eyes[3] = `.${dark}${dark}..${dark}${dark}.`;
+    layers.eyes[4] = layers.eyes[3];
+    const result = applyFeatureReview(
+      { layers, eyeRow: 3, leftEyeX: 2, rightEyeX: 5, notes: "Anime" },
+      demoPatch(request),
+      request,
+      design,
+    );
+    expect(result.patch.faces.head_base_front[4]).toBe(
+      `${skin}${dark}${dark}${skin}${skin}${dark}${dark}${skin}`,
+    );
+  });
   it("places a readable eye pair even when semantic masks scatter eyes vertically", () => {
     const request = {
       ...r,

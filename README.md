@@ -30,6 +30,10 @@ Neue Projekte starten mit einer neutralen, unbemalten Figur. „Neu“ bietet Sp
 
 ## Erster echter KI-Test
 
+Neu: Unter **Skin-Stil** stehen sechs anpassbare Presets zur Verfügung. Sie werden im Projekt gespeichert und steuern auch die Gesichtsregeln. In den Einstellungen kann **Astra als Rastermodell** gewählt und der Reasoning-Aufwand eingestellt werden. Raster- und Bildmodell sind getrennte Einstellungen. Ein Bildentwurf bleibt eine Vorlage für das Rastermodell. Details und Testkonzept: [Skin-Kategorien](docs/SKIN-CATEGORIES.md).
+
+Für einen kurzen Gesichtstest: nur Kopf, nur Grundschicht, direktes Pixelraster, Reasoning niedrig und Merkmalsanalyse zunächst aus. Dies benötigt einen API-Aufruf. Gesamtzeit und aktuelle Schrittzeit werden angezeigt; das Ergebnis enthält Laufzeiten und Tokenverbrauch je Stufe. Astra wurde noch nicht quantitativ gegen Luna verglichen.
+
 1. In den Einstellungen die gewünschte **OpenAI-Modell-ID** eintragen. Das Modell muss Structured Outputs unterstützen; für ein Referenzbild zusätzlich Vision. Es gibt absichtlich keine fest verdrahtete Modellannahme.
 2. Deinen eigenen API-Key speichern. Er wird im Electron-Hauptprozess mit `safeStorage` verschlüsselt gespeichert und nicht an den Renderer zurückgegeben.
 3. Optional ein Referenzbild auswählen. Die App bereitet es lokal auf höchstens 1024 Pixel Kantenlänge auf und zeigt an, dass es an OpenAI gesendet wird.

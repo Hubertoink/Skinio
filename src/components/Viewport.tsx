@@ -9,9 +9,12 @@ import {
   type Layer,
   type Skin,
 } from "../core/skin";
+import { POSES } from "../core/poses";
 import { skinCanvas } from "../core/images";
 export type Tool = "brush" | "erase" | "pick" | "fill" | "orbit";
 interface Props {
+  pose: string;
+  captureRef: { current: (() => string) | null };
   skin: Skin;
   parts: Part[];
   layer: Layer;
@@ -103,12 +106,27 @@ export function Viewport(props: Props) {
       alphaTest: 0.01,
       side: THREE.FrontSide,
     });
+    const body = new THREE.Group();
+    scene.add(body);
+    const joints = new Map<Part, THREE.Group>();
+    const deformers: {
+      geometry: THREE.BufferGeometry;
+      original: Float32Array;
+      matrix: THREE.Matrix4;
+      inverse: THREE.Matrix4;
+      part: Part;
+    }[] = [];
     const meshes: THREE.Mesh[] = [];
     const grids: THREE.LineSegments[] = [];
     for (const f of faces(props.skin.model)) {
       const [w, h, d] = dimensions(f.part, props.skin.model);
       const pad = f.layer === "outer" ? (f.part === "head" ? 0.5 : 0.25) : 0;
-      const geometry = new THREE.PlaneGeometry(f.w + pad * 2, f.h + pad * 2);
+      const geometry = new THREE.PlaneGeometry(
+        f.w + pad * 2,
+        f.h + pad * 2,
+        1,
+        f.h,
+      );
       const uv = geometry.attributes.uv;
       for (let i = 0; i < uv.count; i++) {
         const u = uv.getX(i),
@@ -150,14 +168,41 @@ export function Viewport(props: Props) {
         mesh.position.y -= h / 2 + pad;
         mesh.rotation.x = Math.PI / 2;
       }
-      scene.add(mesh);
+      let joint = joints.get(f.part);
+      if (!joint) {
+        joint = new THREE.Group();
+        joint.position.set(
+          centerX,
+          f.part === "head"
+            ? 24
+            : f.part.endsWith("Leg")
+              ? 12
+              : f.part === "torso"
+                ? 12
+                : 22,
+          0,
+        );
+        body.add(joint);
+        joints.set(f.part, joint);
+      }
+      mesh.position.sub(joint.position);
+      joint.add(mesh);
       meshes.push(mesh);
       const points: number[] = [];
       const fw = f.w + pad * 2,
         fh = f.h + pad * 2;
       for (let x = 0; x <= f.w; x++) {
         const px = -fw / 2 + (x / f.w) * fw;
-        points.push(px, -fh / 2, 0.015, px, fh / 2, 0.015);
+        for (let y = 0; y < f.h; y++) {
+          points.push(
+            px,
+            -fh / 2 + (y / f.h) * fh,
+            0.015,
+            px,
+            -fh / 2 + ((y + 1) / f.h) * fh,
+            0.015,
+          );
+        }
       }
       for (let y = 0; y <= f.h; y++) {
         const py = -fh / 2 + (y / f.h) * fh;
@@ -180,7 +225,44 @@ export function Viewport(props: Props) {
       grid.userData.face = f;
       mesh.add(grid);
       grids.push(grid);
+      if (f.part.endsWith("Leg") || f.part.endsWith("Arm")) {
+        mesh.updateMatrix();
+        for (const geo of [geometry, gridGeo]) {
+          deformers.push({
+            geometry: geo,
+            original: new Float32Array(geo.attributes.position.array),
+            matrix: mesh.matrix.clone(),
+            inverse: mesh.matrix.clone().invert(),
+            part: f.part,
+          });
+        }
+      }
     }
+    // Photo-only block fingers reuse the skin's hand texel.
+    const fingers = new THREE.Group();
+    const fingerMaterial = material.clone();
+    const handFace = faces(props.skin.model).find(
+      (f) => f.part === "leftArm" && f.layer === "base" && f.side === "front",
+    )!;
+    for (const direction of [-1, 1]) {
+      const finger = new THREE.Mesh(
+        new THREE.BoxGeometry(0.85, 3.6, 1.1),
+        fingerMaterial,
+      );
+      const uv = finger.geometry.attributes.uv;
+      for (let i = 0; i < uv.count; i++)
+        uv.setXY(
+          i,
+          (handFace.x + handFace.w / 2) / 64,
+          1 - (handFace.y + handFace.h - 0.5) / 64,
+        );
+      finger.position.set(direction * 1.0, -7.5, 0);
+      finger.rotation.z = direction * -0.3;
+      fingers.add(finger);
+    }
+    fingers.position.y = -4;
+    joints.get("leftArm")!.add(fingers);
+    fingers.visible = false;
     const ground = new THREE.GridHelper(90, 18, "#435049", "#28342e");
     ground.position.y = -0.65;
     scene.add(ground);
@@ -268,14 +350,65 @@ export function Viewport(props: Props) {
     });
     observer.observe(el);
     let frame = 0;
+    let appliedPose = "";
+    const vertex = new THREE.Vector3();
     const animate = () => {
       const p = latest.current;
+      if (appliedPose !== p.pose) {
+        const pose = POSES.find((item) => item.id === p.pose) ?? POSES[0];
+        for (const [part, joint] of joints) {
+          const angles = pose.rotations[part] ?? [0, 0, 0];
+          joint.rotation.set(
+            ...(angles.map(THREE.MathUtils.degToRad) as [
+              number,
+              number,
+              number,
+            ]),
+          );
+        }
+        fingers.visible = !!pose.peace;
+        fingers.rotation.x = THREE.MathUtils.degToRad(pose.elbows?.[1] ?? 0);
+        body.rotation.y = THREE.MathUtils.degToRad(pose.turn ?? 0);
+        for (const item of deformers) {
+          const arm = item.part.endsWith("Arm");
+          const bend = arm ? 4 : 6;
+          const angle = THREE.MathUtils.degToRad(
+            (arm ? pose.elbows : pose.knees)?.[
+              item.part.startsWith("right") ? 0 : 1
+            ] ?? 0,
+          );
+          const position = item.geometry.attributes.position;
+          for (let i = 0; i < position.count; i++) {
+            vertex.fromArray(item.original, i * 3).applyMatrix4(item.matrix);
+            if (vertex.y < -bend) {
+              const y = vertex.y + bend,
+                z = vertex.z;
+              vertex.y = y * Math.cos(angle) - z * Math.sin(angle) - bend;
+              vertex.z = y * Math.sin(angle) + z * Math.cos(angle);
+            }
+            vertex.applyMatrix4(item.inverse);
+            position.setXYZ(i, vertex.x, vertex.y, vertex.z);
+          }
+          position.needsUpdate = true;
+          item.geometry.computeBoundingSphere();
+          item.geometry.computeBoundingBox();
+        }
+        body.position.y = 0;
+        body.updateMatrixWorld(true);
+        const bounds = new THREE.Box3().setFromObject(body, true);
+        body.position.y = -bounds.min.y + (pose.height ?? 0);
+        body.updateMatrixWorld(true);
+        appliedPose = p.pose;
+      }
       for (const mesh of meshes) {
         const f = mesh.userData.face as Face;
         mesh.visible =
           (f.layer === "base" || p.outer || p.layer === "outer") &&
           (!p.isolate || p.parts.includes(f.part));
       }
+      fingers.visible =
+        !!POSES.find((item) => item.id === p.pose)?.peace &&
+        (!p.isolate || p.parts.includes("leftArm"));
       for (const grid of grids) {
         const f = grid.userData.face as Face;
         grid.visible =
@@ -291,7 +424,33 @@ export function Viewport(props: Props) {
       frame = requestAnimationFrame(animate);
     };
     animate();
+    props.captureRef.current = () => {
+      const size = renderer.getSize(new THREE.Vector2());
+      const pixelRatio = renderer.getPixelRatio();
+      const visibility = grids.map((grid) => grid.visible);
+      try {
+        ground.visible = false;
+        grids.forEach((grid) => {
+          grid.visible = false;
+        });
+        // Keep the exact camera framing; output at twice the preview resolution.
+        renderer.setPixelRatio(2);
+        renderer.setSize(size.x, size.y, false);
+        renderer.setClearColor(0x000000, 0);
+        renderer.render(scene, camera);
+        return renderer.domElement.toDataURL("image/png");
+      } finally {
+        ground.visible = true;
+        grids.forEach((grid, i) => {
+          grid.visible = visibility[i];
+        });
+        renderer.setPixelRatio(pixelRatio);
+        renderer.setSize(size.x, size.y, false);
+        renderer.render(scene, camera);
+      }
+    };
     return () => {
+      props.captureRef.current = null;
       cancelAnimationFrame(frame);
       observer.disconnect();
       controls.dispose();

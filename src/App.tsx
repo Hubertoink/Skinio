@@ -1,3 +1,11 @@
+import { POSES } from "./core/poses";
+import { StylePicker } from "./components/StylePicker";
+import {
+  activeStyle,
+  stylePreset,
+  visibleHumanFace,
+  type StyleProfile,
+} from "./core/style-profile";
 import { useEffect, useRef, useState } from "react";
 import {
   Box,
@@ -29,6 +37,8 @@ import {
   UnlockKeyhole,
   Camera,
   PersonStanding,
+  PanelRightClose,
+  PanelRightOpen,
 } from "lucide-react";
 import {
   PARTS,
@@ -114,6 +124,9 @@ export function App() {
   const [layer, setLayer] = useState<Layer>("base");
   const [generationLayer, setGenerationLayer] =
     useState<GenerationLayer>("both");
+  const [styleProfile, setStyleProfile] = useState<StyleProfile>(
+    boot.styleProfile ?? stylePreset("free"),
+  );
   const [humanFace, setHumanFace] = useState(true);
   const [faceMethod, setFaceMethod] = useState<"grid" | "image">("grid");
   const [portraitDetails, setPortraitDetails] = useState(true);
@@ -139,6 +152,9 @@ export function App() {
   const [outer, setOuter] = useState(true);
   const [isolate, setIsolate] = useState(false);
   const [view, setView] = useState(0);
+  const capturePose = useRef<(() => string) | null>(null);
+  const [pose, setPose] = useState("neutral");
+  const [aiCollapsed, setAiCollapsed] = useState(false);
   const [part, setPart] = useState<Part>("torso");
   const [face, setFace] = useState("front");
   const [hover, setHover] = useState("64 × 64 · RGBA PNG");
@@ -158,9 +174,37 @@ export function App() {
   const [key, setKey] = useState("");
   const [hasKey, setHasKey] = useState(false);
   const [model, setModel] = useState(
-    () => localStorage.getItem("skin-forge-model") ?? "",
+    () => localStorage.getItem("skin-forge-model") || "gpt-6-astra",
   );
+  const [imageModel, setImageModel] = useState(
+    () => localStorage.getItem("skin-forge-image-model") || "gpt-image-2",
+  );
+  const [reasoningEffort, setReasoningEffort] = useState<
+    "auto" | "low" | "medium" | "high"
+  >("low");
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [stageSeconds, setStageSeconds] = useState(0);
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!busy) return;
+    const start = Date.now();
+    setElapsedSeconds(0);
+    const timer = setInterval(
+      () => setElapsedSeconds(Math.floor((Date.now() - start) / 1000)),
+      1000,
+    );
+    return () => clearInterval(timer);
+  }, [busy]);
+  useEffect(() => {
+    if (!busy) return;
+    const start = Date.now();
+    setStageSeconds(0);
+    const timer = setInterval(
+      () => setStageSeconds(Math.floor((Date.now() - start) / 1000)),
+      1000,
+    );
+    return () => clearInterval(timer);
+  }, [busy, generationStage]);
   const [preview, setPreview] = useState<{
     request: GenerationRequest;
     result: GenerationResult;
@@ -183,7 +227,7 @@ export function App() {
       try {
         localStorage.setItem(
           AUTOSAVE,
-          JSON.stringify(projectOf(skin, name, palette)),
+          JSON.stringify(projectOf(skin, name, palette, styleProfile)),
         );
         setSaved(true);
       } catch {
@@ -193,19 +237,21 @@ export function App() {
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [skin, name, palette]);
+  }, [skin, name, palette, styleProfile]);
   useEffect(() => {
     const save = () => {
       try {
         localStorage.setItem(
           AUTOSAVE,
-          JSON.stringify(projectOf(skinRef.current, name, palette)),
+          JSON.stringify(
+            projectOf(skinRef.current, name, palette, styleProfile),
+          ),
         );
       } catch {}
     };
     window.addEventListener("beforeunload", save);
     return () => window.removeEventListener("beforeunload", save);
-  }, [name, palette]);
+  }, [name, palette, styleProfile]);
   const change = (next: Skin) => {
     const before = skinRef.current;
     if (next === before) return;
@@ -315,6 +361,7 @@ export function App() {
       const p = parseProject(JSON.parse(await file.text()));
       change({ model: p.model, pixels: new Uint8ClampedArray(p.pixels) });
       setName(p.name);
+      setStyleProfile(p.styleProfile ?? stylePreset("free"));
       setPalette(p.palette);
       setPaletteLimit(
         p.palette.length > 128 ? 256 : p.palette.length > 64 ? 128 : 64,
@@ -334,6 +381,7 @@ export function App() {
     skinRef.current = next;
     setSkin(next);
     setName("Neuer Skin");
+    setStyleProfile(stylePreset("free"));
     setHistory([]);
     setFuture([]);
     stroke.current = null;
@@ -362,7 +410,7 @@ export function App() {
       const saved = await saveFile(
         "project",
         name,
-        JSON.stringify(projectOf(skinRef.current, name, palette)),
+        JSON.stringify(projectOf(skinRef.current, name, palette, styleProfile)),
       );
       if (saved) startNew();
     } catch (error) {
@@ -372,10 +420,11 @@ export function App() {
     }
   };
   const imageFaceAvailable =
-    !!reference &&
-    humanFace &&
-    parts.includes("head") &&
-    generationLayer !== "outer";
+    !!reference && parts.includes("head") && generationLayer !== "outer";
+  const effectiveHumanFace = activeStyle(styleProfile)
+    ? visibleHumanFace(styleProfile)
+    : humanFace;
+  const portraitAvailable = imageFaceAvailable && effectiveHumanFace;
   const clothingReviewActive =
     clothingReview &&
     generationLayer !== "outer" &&
@@ -385,9 +434,12 @@ export function App() {
     pixels: Array.from(skinRef.current.pixels),
     parts: [...parts],
     layer: generationLayer,
-    humanFace,
+    humanFace: effectiveHumanFace,
+    styleProfile,
+    imageModel,
+    reasoningEffort,
     faceMethod: imageFaceAvailable ? faceMethod : "grid",
-    portraitDetails: imageFaceAvailable && portraitDetails,
+    portraitDetails: portraitAvailable && portraitDetails,
     paletteLimit,
     clothingDetail,
     clothingReview:
@@ -491,7 +543,9 @@ export function App() {
                   await saveFile(
                     "project",
                     name,
-                    JSON.stringify(projectOf(skin, name, palette)),
+                    JSON.stringify(
+                      projectOf(skin, name, palette, styleProfile),
+                    ),
                   )
                 )
                   setMessage("Projektdatei gespeichert.");
@@ -514,6 +568,13 @@ export function App() {
           >
             <Download size={15} /> PNG exportieren
           </button>
+          <button title="Aktuelle Kamera und Pose als PNG mit transparentem Hintergrund speichern" onClick={() => attempt(async () => {
+            if (!capturePose.current) throw new Error("Die 3D-Vorschau ist noch nicht verfügbar.");
+            const png = capturePose.current();
+            if (await saveFile("pose", `${name}-${pose}`, png)) setMessage("Pose als transparentes PNG exportiert – ohne Boden und Pixelraster.");
+          })}>
+            <Camera size={15} /> Pose exportieren
+          </button>
           <button
             className="icon-button"
             aria-label="KI-Einstellungen"
@@ -523,7 +584,7 @@ export function App() {
           </button>
         </div>
       </header>
-      <main className="workspace">
+      <main className={`workspace${aiCollapsed ? " ai-collapsed" : ""}`}>
         <aside className="left-panel">
           <div className="section-label spaced">
             FARBPALETTE <span>{palette.length}</span>
@@ -693,9 +754,22 @@ export function App() {
           </button>
         </aside>
         <section className="center-panel">
+          <button className="ai-panel-toggle" aria-controls="ai-panel" aria-expanded={!aiCollapsed}
+            aria-label={aiCollapsed ? "KI-Panel ausklappen" : "KI-Panel einklappen"}
+            title={aiCollapsed ? "KI-Panel ausklappen" : "KI-Panel einklappen"}
+            onClick={() => setAiCollapsed((value) => !value)}>
+            {aiCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
+            <span>KI</span>
+          </button>
           <div className="stage">
             <div className="stage-toolbar">
               <div className="camera-controls">
+                <label className="pose-select">
+                  <span>Pose</span>
+                  <select aria-label="Pose" value={pose} onChange={(e) => setPose(e.target.value)}>
+                    {POSES.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  </select>
+                </label>
                 <div
                   className="canvas-select"
                   title={`Kameraansicht: ${["Freie 3D-Ansicht", "Vorne", "Hinten", "Linke Seite", "Rechte Seite"][view % 5]}`}
@@ -763,6 +837,8 @@ export function App() {
               </p>
             </div>
             <Viewport
+              captureRef={capturePose}
+              pose={pose}
               skin={display}
               parts={parts}
               layer={layer}
@@ -876,6 +952,13 @@ export function App() {
               <div className="generation-overlay">
                 <LoaderCircle className="spin" size={28} />
                 <strong>{generationStage}</strong>
+                <span>
+                  {elapsedSeconds} s gesamt · {stageSeconds} s in diesem Schritt
+                </span>
+                <small>
+                  Die API liefert hier erst die vollständige Antwort. Zeitlimit:
+                  7 Minuten.
+                </small>
                 <span>Dein Original bleibt erhalten.</span>
                 <button onClick={() => attempt(() => window.desktop?.cancel())}>
                   Abbrechen
@@ -952,7 +1035,7 @@ export function App() {
             />
           </div>
         </section>
-        <aside className="right-panel">
+        <aside id="ai-panel" className="right-panel" hidden={aiCollapsed}>
           <div className="ai-title">
             <div className="ai-mark">
               <Sparkles size={19} />
@@ -1007,6 +1090,11 @@ export function App() {
               <option value="outer">Nur äußere Schicht</option>
             </select>
           </label>
+          <StylePicker
+            value={styleProfile}
+            onChange={setStyleProfile}
+            disabled={frozen}
+          />
           <label className="generation-layer-label">
             Kleidungsdetails
             <select
@@ -1056,8 +1144,8 @@ export function App() {
           <label className="face-guide">
             <input
               type="checkbox"
-              checked={humanFace}
-              disabled={frozen}
+              checked={effectiveHumanFace}
+              disabled={frozen || !!activeStyle(styleProfile)}
               onChange={(e) => setHumanFace(e.target.checked)}
             />{" "}
             Menschliches Gesicht mit sichtbaren Augen
@@ -1082,15 +1170,15 @@ export function App() {
             <input
               type="checkbox"
               aria-label="Porträtanalyse und Gesichtsprüfung"
-              checked={portraitDetails}
-              disabled={frozen || !imageFaceAvailable}
+              checked={portraitAvailable && portraitDetails}
+              disabled={frozen || !portraitAvailable}
               onChange={(e) => setPortraitDetails(e.target.checked)}
             />{" "}
             Merkmale analysieren & Gesicht nachprüfen
           </label>
           <p className="microcopy">
             {imageFaceAvailable
-              ? `${(portraitDetails ? 3 : 1) + (faceMethod === "image" ? 1 : 0) + (clothingReviewActive ? 1 : 0)} kostenpflichtige API-Aufrufe. ${portraitDetails ? "Haut-, Haar- und Augenfarben ergänzen die Palette. Nach dem Raster folgt eine gezielte Gesichtskorrektur mit Kontrastprüfung." : "Direktes Raster ohne zusätzliche Merkmalsanalyse und KI-Nachprüfung."} ${faceMethod === "image" ? "GPT Image 2 liefert zusätzlich den Gesichtsentwurf." : ""}`
+              ? `${(portraitAvailable && portraitDetails ? 3 : 1) + (faceMethod === "image" ? 1 : 0) + (clothingReviewActive ? 1 : 0)} kostenpflichtige API-Aufrufe. ${portraitAvailable && portraitDetails ? "Haut-, Haar- und Augenfarben ergänzen die Palette. Nach dem Raster folgt eine gezielte Gesichtskorrektur mit Kontrastprüfung." : "Direktes Raster ohne zusätzliche Merkmalsanalyse und KI-Nachprüfung."} ${faceMethod === "image" ? `${imageModel} liefert zusätzlich den Gesichtsentwurf.` : ""}`
               : `${clothingReviewActive ? 2 : 1} kostenpflichtige API-Aufrufe. Porträtanalyse und Bildentwurf benötigen ein Referenzbild und die Kopf-Grundschicht.`}
           </p>
           {preview?.result.portrait && (
@@ -1120,6 +1208,22 @@ export function App() {
               {w}
             </p>
           ))}
+          {preview?.result.stages && (
+            <details className="harness-details">
+              <summary>Laufzeit und Modell</summary>
+              <p>
+                {preview.result.provider} · {preview.result.pipeline} ·{" "}
+                {(preview.result.elapsedMs / 1000).toFixed(1)} s gesamt
+              </p>
+              {preview.result.stages.map((s, i) => (
+                <p key={i}>
+                  {s.name}: {(s.elapsedMs / 1000).toFixed(1)} s ·{" "}
+                  {s.output_tokens ?? "?"} Ausgabetoken, davon{" "}
+                  {s.reasoning_tokens ?? "?"} Reasoning
+                </p>
+              ))}
+            </details>
+          )}
           {preview?.result.faceDraft && (
             <details className="harness-details">
               <summary>Gesichtsentwurf vor der Verkleinerung</summary>
@@ -1369,9 +1473,49 @@ export function App() {
                 }}
               />
             </label>
+            <button
+              onClick={() => {
+                setModel("gpt-6-astra");
+                localStorage.setItem("skin-forge-model", "gpt-6-astra");
+              }}
+            >
+              Astra als Rastermodell wählen
+            </button>
+            <label>
+              Reasoning-Aufwand
+              <select
+                aria-label="Reasoning-Aufwand"
+                value={reasoningEffort}
+                onChange={(e) =>
+                  setReasoningEffort(e.target.value as typeof reasoningEffort)
+                }
+              >
+                <option value="low">Niedrig · schneller Einstieg</option>
+                <option value="medium">Mittel</option>
+                <option value="high">Hoch · mehr Denkzeit</option>
+                <option value="auto">Modellstandard</option>
+              </select>
+            </label>
+            <label>
+              Bildmodell-ID
+              <input
+                aria-label="Bildmodell-ID"
+                value={imageModel}
+                onChange={(e) => {
+                  setImageModel(e.target.value);
+                  localStorage.setItem(
+                    "skin-forge-image-model",
+                    e.target.value,
+                  );
+                }}
+              />
+            </label>
             <small>
-              Benötigt Structured Outputs; für Referenzbilder zusätzlich
-              Bildeingaben. Die Verfügbarkeit hängt von deinem API-Konto ab.
+              Astra/GPT-5 erzeugen das Raster; das Bildmodell erzeugt den
+              optionalen Entwurf. Reasoning wird für GPT-5/6-Rastermodelle
+              gesetzt. Benötigt Structured Outputs; für Referenzbilder
+              zusätzlich Bildeingaben. Die Verfügbarkeit hängt von deinem
+              API-Konto ab.
             </small>
             <label>
               API-Key{" "}
@@ -1419,11 +1563,11 @@ export function App() {
             <p className="microcopy">
               Direktes Raster: ein API-Aufruf. Porträtanalyse und abschließende
               Gesichtsprüfung ergänzen zwei Aufrufe. Der optionale Bildentwurf
-              verwendet zusätzlich GPT Image 2. Der Kleidungsabgleich ergänzt
-              einen Aufruf. Die Anzahl steht vor dem Generieren in der
-              Werkstatt. Jeder fertige Skin durchläuft dieselbe lokale Prüfung.
-              Ein Abbruch kann bereits entstandene Kosten nicht rückgängig
-              machen.
+              verwendet zusätzlich das gewählte Bildmodell. Der
+              Kleidungsabgleich ergänzt einen Aufruf. Die Anzahl steht vor dem
+              Generieren in der Werkstatt. Jeder fertige Skin durchläuft
+              dieselbe lokale Prüfung. Ein Abbruch kann bereits entstandene
+              Kosten nicht rückgängig machen.
             </p>
           </section>
         </div>

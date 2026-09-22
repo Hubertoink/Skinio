@@ -1052,7 +1052,8 @@ p {
   margin-top: 22px;
   color: #c5d2bc;
 }
-.settings-modal label input {
+.settings-modal label input,
+.settings-modal label select {
   display: block;
   width: 100%;
   margin-top: 9px;
@@ -1163,3 +1164,13 @@ p {
     display: none;
   }
 }
+
+/* Keep the panel toggle reachable while the workshop is hidden. */
+.workspace.ai-collapsed { grid-template-columns: 218px minmax(420px, 1fr); }
+.right-panel[hidden] { display: none; }
+.center-panel { position: relative; }
+.ai-panel-toggle { position: absolute; right: 61px; top: 18px; z-index: 3; display: flex; align-items: center; gap: 5px; padding: 7px; }
+.pose-select { display: flex; align-items: center; gap: 7px; pointer-events: auto; font-size: 11px; }
+.pose-select select { width: 155px; min-height: 33px; padding: 5px 8px; }
+@media (min-width: 1550px) { .workspace.ai-collapsed { grid-template-columns: 238px minmax(450px, 1fr); } }
+@media (max-width: 1200px) { .workspace.ai-collapsed { grid-template-columns: 190px minmax(400px, 1fr); } }

@@ -79,7 +79,12 @@ app.whenReady().then(() => {
     }
     const controller = new AbortController();
     active = controller;
-    const timer = setTimeout(() => controller.abort(), 420_000);
+    let lastStage = "Vorbereitung";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 420_000);
     try {
       return await generateOpenAI(
         request,
@@ -87,12 +92,17 @@ app.whenReady().then(() => {
         key,
         controller.signal,
         fetch,
-        (stage) => win?.webContents.send("ai:progress", stage),
+        (stage) => {
+          lastStage = stage;
+          win?.webContents.send("ai:progress", stage);
+        },
       );
     } catch (e) {
       if (controller.signal.aborted)
         throw new Error(
-          "Generierung abgebrochen oder Zeitlimit erreicht. Bereits entstandene API-Kosten können bestehen bleiben.",
+          timedOut
+            ? `Zeitlimit von 7 Minuten erreicht (Schritt: ${lastStage}). Für den nächsten Versuch nur den Kopf wählen oder den Reasoning-Aufwand reduzieren. Bereits entstandene API-Kosten bleiben möglich.`
+            : "Generierung abgebrochen. Bereits entstandene API-Kosten können bestehen bleiben.",
         );
       throw e;
     } finally {
@@ -105,35 +115,38 @@ app.whenReady().then(() => {
   });
   register("file:save", async (kind: string, name: string, content: string) => {
     if (
-      !["png", "project", "json"].includes(kind) ||
+      !["png", "pose", "project", "json"].includes(kind) ||
       typeof content !== "string" ||
       content.length > 10_000_000 ||
       typeof name !== "string"
     )
       throw new Error("Ungültige Datei.");
-    const ext = kind === "project" ? "skinforge" : kind;
+    const ext = kind === "project" ? "skinforge" : kind === "pose" ? "png" : kind;
     const clean =
       name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").slice(0, 100) || "skin";
     const result = await dialog.showSaveDialog(win!, {
       defaultPath: `${clean}.${ext}`,
       filters: [
         {
-          name: kind === "png" ? "Minecraft Skin" : "Skin Forge",
+          name: kind === "png" ? "Minecraft Skin" : kind === "pose" ? "Pose (transparentes PNG)" : "Skin Forge",
           extensions: [ext],
         },
       ],
     });
     if (result.canceled || !result.filePath) return false;
-    if (kind === "png") {
+    if (kind === "png" || kind === "pose") {
       if (!/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(content))
         throw new Error("PNG erwartet.");
       const buffer = Buffer.from(content.split(",")[1], "base64");
       if (
         buffer.length < 24 ||
-        buffer.readUInt32BE(16) !== 64 ||
-        buffer.readUInt32BE(20) !== 64
+        (kind === "png" &&
+          (buffer.readUInt32BE(16) !== 64 || buffer.readUInt32BE(20) !== 64)) ||
+        (kind === "pose" &&
+          (buffer.readUInt32BE(16) < 1 || buffer.readUInt32BE(20) < 1 ||
+            buffer.readUInt32BE(16) > 8192 || buffer.readUInt32BE(20) > 8192))
       )
-        throw new Error("Skin muss 64 × 64 Pixel haben.");
+        throw new Error(kind === "png" ? "Skin muss 64 × 64 Pixel haben." : "Posenbild darf maximal 8192 × 8192 Pixel haben.");
       await writeFile(result.filePath, buffer);
     } else await writeFile(result.filePath, content, "utf8");
     return true;

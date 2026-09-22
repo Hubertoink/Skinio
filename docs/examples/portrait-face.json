@@ -1,0 +1,24 @@
+{
+  "description": "Manuell entworfene 8x8-Kopf-Vorderseite anhand des bereitgestellten Fotos. Keine API-Generierung und keine automatische Fotoverkleinerung.",
+  "palette": {
+    "H": "#202522",
+    "h": "#343933",
+    "S": "#c99164",
+    "L": "#dfa875",
+    "s": "#b77e53",
+    "B": "#47392d",
+    "E": "#201e19",
+    "W": "#cbb89a",
+    "M": "#ad6c54"
+  },
+  "rows": [
+    "HHhhhhHH",
+    "HhLLLLhH",
+    "sBBLLBBs",
+    "SWELLEWS",
+    "SLLssLLS",
+    "BsBMMBsB",
+    "HBsSSsBH",
+    "HHBBBBHH"
+  ]
+}

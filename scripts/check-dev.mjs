@@ -80,6 +80,45 @@ try {
     )
     .not.toBe(0);
   const url = page.url();
+  await page.getByLabel("Skin-Stil", { exact: true }).selectOption("anime");
+  await page.getByText("Merkmale anpassen", { exact: true }).click();
+  await expect(page.getByLabel("Augen", { exact: true })).toHaveValue("large");
+  await page.getByLabel("Mund", { exact: true }).selectOption("smile");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("skin-forge-project-v1")).styleProfile
+            ?.mouth,
+      ),
+    )
+    .toBe("smile");
+  await page.reload();
+  await expect(page.getByLabel("Skin-Stil", { exact: true })).toHaveValue(
+    "anime",
+  );
+  await page.getByText("Merkmale anpassen", { exact: true }).click();
+  await expect(page.getByLabel("Mund", { exact: true })).toHaveValue("smile");
+  await page.getByLabel("Skin-Stil", { exact: true }).selectOption("robot");
+  await expect(
+    page.getByLabel("Menschliches Gesicht mit sichtbaren Augen"),
+  ).not.toBeChecked();
+  await expect(
+    page.getByLabel("Menschliches Gesicht mit sichtbaren Augen"),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "KI-Einstellungen", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Astra als Rastermodell wählen" })
+    .click();
+  await expect(page.getByLabel("Modell-ID", { exact: true })).toHaveValue(
+    "gpt-6-astra",
+  );
+  await expect(page.getByLabel("Reasoning-Aufwand")).toHaveValue("low");
+  await page.screenshot({ path: "artifacts/style-settings.png" });
+  await page.getByRole("button", { name: "Einstellungen schließen" }).click();
+  await page.screenshot({ path: "artifacts/style-profile.png" });
   await page.close();
   const code = await Promise.race([
     exited,

@@ -4,7 +4,7 @@ const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 const desktop = spawn(electron, ["."], {
   stdio: "inherit",
-  windowsHide: true,
+  windowsHide: false,
   env,
 });
 desktop.on("exit", (code) => process.exit(code ?? 0));

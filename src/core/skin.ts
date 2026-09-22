@@ -1,3 +1,4 @@
+import { validateStyleProfile, type StyleProfile } from "./style-profile";
 export const PARTS = [
   "head",
   "torso",
@@ -316,6 +317,7 @@ export function paint(
   return { ...skin, pixels };
 }
 export interface Project {
+  styleProfile?: StyleProfile;
   format: "skin-forge";
   version: 1;
   name: string;
@@ -327,8 +329,12 @@ export function projectOf(
   skin: Skin,
   name: string,
   palette: string[],
+  styleProfile?: StyleProfile,
 ): Project {
   return {
+    ...(styleProfile
+      ? { styleProfile: validateStyleProfile(styleProfile) }
+      : {}),
     format: "skin-forge",
     version: 1,
     name,
@@ -355,5 +361,10 @@ export function parseProject(value: unknown): Project {
     p.palette.some((c) => typeof c !== "string" || !/^#[\da-f]{6}$/i.test(c))
   )
     throw new Error("Keine gültige Skin-Forge-Projektdatei (Version 1).");
-  return p;
+  return {
+    ...p,
+    ...(p.styleProfile !== undefined
+      ? { styleProfile: validateStyleProfile(p.styleProfile) }
+      : {}),
+  };
 }

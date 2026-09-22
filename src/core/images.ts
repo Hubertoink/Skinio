@@ -77,19 +77,20 @@ export async function referenceOf(file: File): Promise<string> {
   }
 }
 export async function saveFile(
-  kind: "png" | "project" | "json",
+  kind: "png" | "pose" | "project" | "json",
   name: string,
   data: string,
 ) {
   if (window.desktop) return window.desktop.saveFile(kind, name, data);
   const url =
-    kind === "png"
+    kind === "png" || kind === "pose"
       ? data
       : URL.createObjectURL(new Blob([data], { type: "application/json" }));
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${name}.${kind === "project" ? "skinforge" : kind}`;
+  a.download = `${name}.${kind === "project" ? "skinforge" : kind === "pose" ? "png" : kind}`;
   a.click();
-  if (kind !== "png") setTimeout(() => URL.revokeObjectURL(url), 1000);
+  if (kind !== "png" && kind !== "pose")
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   return true;
 }
