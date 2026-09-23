@@ -28,7 +28,16 @@ export interface GenerationResult {
     reasoning_tokens?: number;
   }[];
 }
+export interface ModelCatalog {
+  raster: string[];
+  image: string[];
+}
+export interface ProjectFile { id: string; path: string }
 export interface DesktopBridge {
+  openProject(): Promise<{ name: string; bytes: Uint8Array; file: ProjectFile | null } | null>;
+  saveProject(content: string, id: string | null, saveAs: boolean): Promise<ProjectFile | null>;
+  openReference(): Promise<{ name: string; type: string; bytes: Uint8Array } | null>;
+  listModels(): Promise<ModelCatalog>;
   onGenerationProgress?(
     listener: (stage: "analysis" | "image" | "grid" | "review") => void,
   ): () => void;

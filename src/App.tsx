@@ -1,3 +1,4 @@
+import { ModelSettings } from "./components/ModelSettings";
 import { POSES } from "./core/poses";
 import { StylePicker } from "./components/StylePicker";
 import {
@@ -72,13 +73,24 @@ import {
 } from "./core/images";
 import { Viewport, type Tool } from "./components/Viewport";
 import { FaceEditor } from "./components/FaceEditor";
-import type { GenerationResult } from "./bridge";
+import type { GenerationResult, ProjectFile } from "./bridge";
 
 import { colorToken } from "./core/palette-codec";
 
 import { COLOR_BANKS, STUDIO_COLORS, type ColorBank } from "./core/color-banks";
 
 const AUTOSAVE = "skin-forge-project-v1";
+function initialFile(): { file: ProjectFile | null; content: string } {
+  try {
+    const raw = JSON.parse(localStorage.getItem(AUTOSAVE) || "null");
+    parseProject(raw);
+    const workspace = raw.workspace;
+    if (workspace && typeof workspace.content === "string" &&
+      typeof workspace.file?.id === "string" && typeof workspace.file?.path === "string")
+      return workspace;
+  } catch {}
+  return { file: null, content: "" };
+}
 function initial() {
   try {
     const raw = localStorage.getItem(AUTOSAVE);
@@ -160,6 +172,9 @@ export function App() {
   const [hover, setHover] = useState("64 × 64 · RGBA PNG");
   const [message, setMessage] = useState("Bereit.");
   const [saved, setSaved] = useState(true);
+  const [fileState, setFileState] = useState(initialFile);
+  const [fileBusy, setFileBusy] = useState(false);
+  const fileOperation = useRef(false);
   const [history, setHistory] = useState<Skin[]>([]);
   const [future, setFuture] = useState<Skin[]>([]);
   const stroke = useRef<Skin | null>(null);
@@ -173,6 +188,7 @@ export function App() {
   const [newError, setNewError] = useState("");
   const [key, setKey] = useState("");
   const [hasKey, setHasKey] = useState(false);
+  const [credentialVersion, setCredentialVersion] = useState(0);
   const [model, setModel] = useState(
     () => localStorage.getItem("skin-forge-model") || "gpt-6-astra",
   );
@@ -214,7 +230,10 @@ export function App() {
   const [showOriginal, setShowOriginal] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const refInput = useRef<HTMLInputElement>(null);
-  const frozen = busy || paletteBusy || !!preview || newDialog;
+  const [referenceLoading, setReferenceLoading] = useState(false);
+  const frozen = busy || paletteBusy || !!preview || newDialog || fileBusy;
+  const projectContent = JSON.stringify(projectOf(skin, name, palette, styleProfile));
+  const fileDirty = projectContent !== fileState.content;
   useEffect(() => {
     window.desktop
       ?.keyStatus()
@@ -227,7 +246,7 @@ export function App() {
       try {
         localStorage.setItem(
           AUTOSAVE,
-          JSON.stringify(projectOf(skin, name, palette, styleProfile)),
+          JSON.stringify({ ...projectOf(skin, name, palette, styleProfile), workspace: fileState }),
         );
         setSaved(true);
       } catch {
@@ -237,21 +256,21 @@ export function App() {
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [skin, name, palette, styleProfile]);
+  }, [skin, name, palette, styleProfile, fileState]);
   useEffect(() => {
     const save = () => {
       try {
         localStorage.setItem(
           AUTOSAVE,
           JSON.stringify(
-            projectOf(skinRef.current, name, palette, styleProfile),
+            { ...projectOf(skinRef.current, name, palette, styleProfile), workspace: fileState },
           ),
         );
       } catch {}
     };
     window.addEventListener("beforeunload", save);
     return () => window.removeEventListener("beforeunload", save);
-  }, [name, palette, styleProfile]);
+  }, [name, palette, styleProfile, fileState]);
   const change = (next: Skin) => {
     const before = skinRef.current;
     if (next === before) return;
@@ -327,6 +346,11 @@ export function App() {
   };
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (!frozen && !settings) void attempt(() => saveProject(e.shiftKey));
+        return;
+      }
       if (
         (e.target as HTMLElement).matches("input,textarea,select") ||
         settings ||
@@ -354,15 +378,19 @@ export function App() {
       setMessage(e instanceof Error ? e.message : String(e));
     }
   };
-  const importFile = async (file: File) => {
+  const importFile = async (file: File, projectFile: ProjectFile | null = null) => {
     if (frozen) return;
-    if (file.name.endsWith(".skinforge") || file.name.endsWith(".json")) {
+    if (/\.(skinforge|json)$/i.test(file.name)) {
       if (file.size > 1_000_000) throw new Error("Projektdatei ist zu groß.");
       const p = parseProject(JSON.parse(await file.text()));
       change({ model: p.model, pixels: new Uint8ClampedArray(p.pixels) });
       setName(p.name);
       setStyleProfile(p.styleProfile ?? stylePreset("free"));
       setPalette(p.palette);
+      setFileState({ file: projectFile, content: projectFile ? JSON.stringify(projectOf(
+        { model: p.model, pixels: new Uint8ClampedArray(p.pixels) }, p.name, p.palette,
+        p.styleProfile ?? stylePreset("free"),
+      )) : "" });
       setPaletteLimit(
         p.palette.length > 128 ? 256 : p.palette.length > 64 ? 128 : 64,
       );
@@ -370,13 +398,51 @@ export function App() {
     } else {
       const imported = await importPNG(file, skinRef.current.model);
       change(imported);
+      setFileState({ file: null, content: "" });
       setName(file.name.replace(/\.[^.]+$/, ""));
       setMessage(
         `Importiert als ${imported.model === "slim" ? "Slim · 3 px Arme" : "Classic · 4 px Arme"}.`,
       );
     }
+    setHistory([]);
+    setFuture([]);
+  };
+  const openProject = async () => {
+    if (!window.desktop) { fileInput.current?.click(); return; }
+    if (fileOperation.current) return;
+    fileOperation.current = true;
+    setFileBusy(true);
+    try {
+      const selected = await window.desktop.openProject();
+      if (selected) await importFile(new File([Uint8Array.from(selected.bytes)], selected.name), selected.file);
+    } finally {
+      fileOperation.current = false;
+      setFileBusy(false);
+    }
+  };
+  const saveProject = async (saveAs = false) => {
+    if (fileOperation.current) return false;
+    fileOperation.current = true;
+    setFileBusy(true);
+    const content = JSON.stringify(projectOf(skinRef.current, name, palette, styleProfile));
+    try {
+      if (window.desktop) {
+        const file = await window.desktop.saveProject(content, fileState.file?.id ?? null, saveAs);
+        if (!file) return false;
+        setFileState({ file, content });
+        setMessage(`Projektdatei gespeichert: ${file.path}`);
+      } else {
+        if (!await saveFile("project", name, content)) return false;
+        setMessage("Projektdatei heruntergeladen. Direktes Speichern ist in der Desktop-App verfügbar.");
+      }
+      return true;
+    } finally {
+      fileOperation.current = false;
+      setFileBusy(false);
+    }
   };
   const startNew = () => {
+    setFileState({ file: null, content: "" });
     const next = createBlankSkin(skinRef.current.model);
     skinRef.current = next;
     setSkin(next);
@@ -407,11 +473,7 @@ export function App() {
     setNewSaving(true);
     setNewError("");
     try {
-      const saved = await saveFile(
-        "project",
-        name,
-        JSON.stringify(projectOf(skinRef.current, name, palette, styleProfile)),
-      );
+      const saved = await saveProject();
       if (saved) startNew();
     } catch (error) {
       setNewError(error instanceof Error ? error.message : String(error));
@@ -518,9 +580,11 @@ export function App() {
             maxLength={100}
             onChange={(e) => setName(e.target.value)}
           />
-          <span className="save-state">
-            <i />
-            {saved ? "Lokal gespeichert" : "Speichert …"}
+          <span className="save-state" title={fileState.file?.path ?? "Noch keine Projektdatei zugeordnet"}>
+            {fileBusy ? "Dateizugriff …" : fileState.file
+              ? fileDirty ? "Ungespeicherte Änderungen" : "Projektdatei gespeichert"
+              : "Noch keine Projektdatei"}
+            <small>{saved ? "Lokal gesichert" : "Lokale Sicherung …"}</small>
           </span>
         </div>
         <div className="header-actions">
@@ -533,26 +597,19 @@ export function App() {
           >
             <Plus size={15} /> Neu
           </button>
-          <button disabled={frozen} onClick={() => fileInput.current?.click()}>
+          <button disabled={frozen} onClick={() => attempt(openProject)}>
             <Upload size={15} /> Öffnen
           </button>
           <button
-            onClick={() =>
-              attempt(async () => {
-                if (
-                  await saveFile(
-                    "project",
-                    name,
-                    JSON.stringify(
-                      projectOf(skin, name, palette, styleProfile),
-                    ),
-                  )
-                )
-                  setMessage("Projektdatei gespeichert.");
-              })
-            }
+            disabled={frozen}
+            title="Projekt speichern (Strg+S)"
+            onClick={() => attempt(() => saveProject())}
           >
-            <Save size={15} /> Projekt
+            <Save size={15} /> Speichern
+          </button>
+          <button disabled={frozen} title="Projekt speichern unter (Strg+Umschalt+S)"
+            onClick={() => attempt(() => saveProject(true))}>
+            Speichern unter
           </button>
           <button
             className="primary"
@@ -1297,8 +1354,25 @@ export function App() {
           ) : (
             <button
               className="reference-drop"
-              disabled={frozen}
-              onClick={() => refInput.current?.click()}
+              disabled={frozen || referenceLoading}
+              onClick={() => {
+                if (!window.desktop) {
+                  refInput.current?.click();
+                  return;
+                }
+                setReferenceLoading(true);
+                void attempt(async () => {
+                  try {
+                    const selected = await window.desktop!.openReference();
+                    if (!selected) return;
+                    const file = new File([Uint8Array.from(selected.bytes)], selected.name, { type: selected.type });
+                    setReference(await referenceOf(file));
+                    setReferenceName(file.name);
+                  } finally {
+                    setReferenceLoading(false);
+                  }
+                });
+              }}
             >
               <ImagePlus size={22} />
               <span>
@@ -1461,26 +1535,21 @@ export function App() {
                 Editor.
               </div>
             )}
-            <label>
-              Modell-ID
-              <input
-                aria-label="Modell-ID"
-                placeholder="Modell-ID aus deinem API-Konto"
-                value={model}
-                onChange={(e) => {
-                  setModel(e.target.value);
-                  localStorage.setItem("skin-forge-model", e.target.value);
-                }}
-              />
-            </label>
-            <button
-              onClick={() => {
-                setModel("gpt-6-astra");
-                localStorage.setItem("skin-forge-model", "gpt-6-astra");
+            <ModelSettings
+              hasKey={hasKey}
+              credentialVersion={credentialVersion}
+              model={model}
+              imageModel={imageModel}
+              onModel={(value) => {
+                setModel(value);
+                setReasoningEffort("auto");
+                localStorage.setItem("skin-forge-model", value);
               }}
-            >
-              Astra als Rastermodell wählen
-            </button>
+              onImageModel={(value) => {
+                setImageModel(value);
+                localStorage.setItem("skin-forge-image-model", value);
+              }}
+            />
             <label>
               Reasoning-Aufwand
               <select
@@ -1496,27 +1565,6 @@ export function App() {
                 <option value="auto">Modellstandard</option>
               </select>
             </label>
-            <label>
-              Bildmodell-ID
-              <input
-                aria-label="Bildmodell-ID"
-                value={imageModel}
-                onChange={(e) => {
-                  setImageModel(e.target.value);
-                  localStorage.setItem(
-                    "skin-forge-image-model",
-                    e.target.value,
-                  );
-                }}
-              />
-            </label>
-            <small>
-              Astra/GPT-5 erzeugen das Raster; das Bildmodell erzeugt den
-              optionalen Entwurf. Reasoning wird für GPT-5/6-Rastermodelle
-              gesetzt. Benötigt Structured Outputs; für Referenzbilder
-              zusätzlich Bildeingaben. Die Verfügbarkeit hängt von deinem
-              API-Konto ab.
-            </small>
             <label>
               API-Key{" "}
               <span>{hasKey ? "● gespeichert" : "noch nicht verbunden"}</span>
@@ -1550,7 +1598,7 @@ export function App() {
                     await window.desktop!.saveKey(key);
                     setKey("");
                     setHasKey(true);
-                    setSettings(false);
+                    setCredentialVersion((n) => n + 1);
                     setMessage(
                       "API-Key gespeichert. Mit „Mit KI generieren“ startest du den ersten kostenpflichtigen Test.",
                     );

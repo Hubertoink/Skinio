@@ -51,7 +51,8 @@ try {
     .click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByLabel("Projektname")).toHaveValue("Neuer Skin");
-  expect(JSON.parse(await readFile(output, "utf8"))).toEqual(original);
+  const { workspace, ...originalProject } = original;
+  expect(JSON.parse(await readFile(output, "utf8"))).toEqual(originalProject);
   await page
     .locator('input[accept="image/png,image/jpeg,image/webp"]')
     .setInputFiles(path.resolve("Example/Niko_Test.jpg"));

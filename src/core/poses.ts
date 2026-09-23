@@ -94,7 +94,8 @@ export const POSES: Pose[] = [
     id: "peace",
     label: "Peace / V-Zeichen",
     rotations: {
-      leftArm: [0, 0, 40],
+      // Shoulder + elbow = -180°: the hand and V fingers point upward.
+      leftArm: [-50, 0, 0],
       head: [0, -8, 12],
       rightLeg: [0, 0, -8],
     },

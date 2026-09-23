@@ -1,6 +1,6 @@
 {
   "name": "skin-forge",
-  "version": "0.5.0",
+  "version": "0.5.2",
   "private": true,
   "description": "Lokaler Minecraft Skin Editor mit validiertem KI-Pixel-Harness",
   "type": "module",

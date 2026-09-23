@@ -100,17 +100,42 @@ try {
   await page
     .getByRole("button", { name: "KI-Einstellungen", exact: true })
     .click();
-  await page
-    .getByRole("textbox", { name: "Modell-ID", exact: true })
-    .fill("test-model");
+  const raster = page.getByLabel("Modell-ID", { exact: true });
+  await expect(raster.locator("option", { hasText: "gpt-7" })).toHaveCount(1);
+  await expect(raster.locator("option", { hasText: "gpt-realtime" })).toHaveCount(0);
+  await expect(raster).toHaveValue("test-model");
+  await raster.selectOption("gpt-7");
+  await expect(page.getByLabel("Reasoning-Aufwand")).toHaveValue("auto");
+  await page.getByLabel("Bildmodell-ID", { exact: true }).selectOption("gpt-image-3");
+  await desktop.evaluate(() => { global.__modelsFail = true; });
+  await page.getByRole("button", { name: "Modelle aktualisieren", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("HTTP 503");
+  await expect(raster).toHaveValue("gpt-7");
+  await desktop.evaluate(() => { global.__modelsFail = false; });
+  await page.getByRole("button", { name: "Modelle aktualisieren", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("1 Rastermodelle und 1 Bildmodelle");
+  await raster.selectOption("__manual");
+  await page.getByLabel("Eigene Modell-ID", { exact: true }).fill("test-model");
   await page
     .getByLabel("API-Key", { exact: true })
     .fill("sk-local-test-only-not-a-real-key");
   await page
     .getByRole("button", { name: "Key speichern", exact: true })
     .click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByLabel("API-Key", { exact: true })).toHaveValue("");
+  await expect(page.getByRole("dialog")).toContainText("1 Rastermodelle und 1 Bildmodelle");
   expect(await page.evaluate(() => window.desktop.keyStatus())).toBe(true);
+  await page.getByRole("button", { name: "Einstellungen schließen" }).click();
+  await page.getByRole("button", { name: "KI-Einstellungen", exact: true }).click();
+  await expect(page.getByLabel("Modell-ID", { exact: true })).toHaveValue("test-model");
+  await expect(page.getByLabel("Bildmodell-ID", { exact: true })).toHaveValue("gpt-image-3");
+  await page.getByRole("button", { name: "Key löschen", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("Speichere deinen API-Key");
+  await expect(page.getByRole("button", { name: "Modelle aktualisieren", exact: true })).toBeDisabled();
+  await page.getByLabel("API-Key", { exact: true }).fill("sk-local-test-only-not-a-real-key");
+  await page.getByRole("button", { name: "Key speichern", exact: true }).click();
+  await expect(page.getByLabel("API-Key", { exact: true })).toHaveValue("");
+  await page.getByRole("button", { name: "Einstellungen schließen" }).click();
 
   // Native save dialog is redirected into an isolated test folder.
   const output = path.join(dir, "export-test.png");

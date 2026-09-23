@@ -26,6 +26,10 @@ Zum Paketieren wird die bereits installierte Electron-Laufzeit verwendet. Der Bu
 
 ## Neues Projekt
 
+In der Desktop-App schreibt **Speichern** (Strg+S) in die zugehörige Projektdatei. Nur beim ersten Speichern wird der Zielort abgefragt. **Speichern unter** (Strg+Umschalt+S) legt eine neue Zieldatei fest; nach Abbrechen oder einem Fehler bleibt die bisherige Zuordnung erhalten. Über **Öffnen** geladene `.skinforge`- und Projekt-JSON-Dateien behalten ihren Pfad. Die Zuordnung bleibt auch beim Neustart mit dem lokal wiederhergestellten Projekt erhalten. Neue Projekte und PNG-Importe beginnen ohne zugeordnete Projektdatei. PNG- und Posenexporte ändern die Projektzuordnung nicht.
+
+Die lokale automatische Sicherung dient zur Wiederherstellung und ersetzt nicht das Speichern in die Projektdatei. Die Kopfzeile zeigt deshalb ungespeicherte Dateiänderungen gesondert an; der vollständige Dateipfad steht im Tooltip der Speicheranzeige. Im Browser werden Projektdateien weiterhin heruntergeladen.
+
 Neue Projekte starten mit einer neutralen, unbemalten Figur. „Neu“ bietet Speichern und neu, Ohne Speichern fortfahren oder Abbrechen. Wird der Dateidialog abgebrochen oder schlägt das Speichern fehl, bleibt das aktuelle Projekt erhalten. Bereits lokal gespeicherte Projekte werden weiterhin geladen; ein früherer Beispiel-Skin lässt sich über „Neu“ ersetzen.
 
 ## Erster echter KI-Test
@@ -34,8 +38,8 @@ Neu: Unter **Skin-Stil** stehen sechs anpassbare Presets zur Verfügung. Sie wer
 
 Für einen kurzen Gesichtstest: nur Kopf, nur Grundschicht, direktes Pixelraster, Reasoning niedrig und Merkmalsanalyse zunächst aus. Dies benötigt einen API-Aufruf. Gesamtzeit und aktuelle Schrittzeit werden angezeigt; das Ergebnis enthält Laufzeiten und Tokenverbrauch je Stufe. Astra wurde noch nicht quantitativ gegen Luna verglichen.
 
-1. In den Einstellungen die gewünschte **OpenAI-Modell-ID** eintragen. Das Modell muss Structured Outputs unterstützen; für ein Referenzbild zusätzlich Vision. Es gibt absichtlich keine fest verdrahtete Modellannahme.
-2. Deinen eigenen API-Key speichern. Er wird im Electron-Hauptprozess mit `safeStorage` verschlüsselt gespeichert und nicht an den Renderer zurückgegeben.
+1. Deinen eigenen API-Key in den Einstellungen speichern. Er wird im Electron-Hauptprozess mit `safeStorage` verschlüsselt gespeichert und nicht an den Renderer zurückgegeben.
+2. Raster- und Bildmodell aus den automatisch geladenen Auswahllisten wählen. Die App ruft beim Öffnen der Einstellungen, nach dem Speichern eines Keys und über „Modelle aktualisieren“ die [OpenAI-Modellliste](https://developers.openai.com/api/reference/resources/models/methods/list) ab. Neue Versionen der unterstützten Modellfamilien werden automatisch vorgeschlagen; die eigene Auswahl bleibt erhalten. Da die API keine vollständigen Fähigkeiten liefert, sind die Vorschläge nach Modellnamen gefiltert und keine Kompatibilitätsgarantie. Rastermodelle benötigen Structured Outputs, für Referenzbilder zusätzlich Vision. Modell-IDs können weiterhin manuell eingegeben werden. Bei einem Modellwechsel wird der Reasoning-Aufwand auf „Modellstandard“ gesetzt.
 3. Optional ein Referenzbild auswählen. Die App bereitet es lokal auf höchstens 1024 Pixel Kantenlänge auf und zeigt an, dass es an OpenAI gesendet wird.
 4. Körperteile auswählen. Unter „KI bearbeitet“ stehen **beide Schichten gemeinsam** (Standard), nur Grundschicht oder nur äußere Schicht zur Wahl. Die Körperteilauswahl begrenzt auch das manuelle Malen; die aktive Malschicht im Canvas ist davon unabhängig.
 5. Palette wählen, Prompt beschreiben, „Mit KI generieren“ drücken.

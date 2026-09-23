@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { DesktopBridge } from "../src/bridge";
 const bridge: DesktopBridge = {
+  openProject: () => ipcRenderer.invoke("project:open"),
+  saveProject: (content, id, saveAs) => ipcRenderer.invoke("project:save", content, id, saveAs),
+  openReference: () => ipcRenderer.invoke("file:open-reference"),
+  listModels: () => ipcRenderer.invoke("ai:models"),
   onGenerationProgress(listener) {
     const handler = (
       _event: unknown,

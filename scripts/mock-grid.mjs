@@ -3,6 +3,12 @@ export async function mockGrid(app) {
   await app.evaluate(() => {
     global.__badGrid = false;
     global.fetch = async (url, init) => {
+      if (url === "https://api.openai.com/v1/models") {
+        if (global.__modelsFail) return new Response("Unavailable", { status: 503 });
+        return new Response(JSON.stringify({ data: [
+          { id: "gpt-7" }, { id: "gpt-image-3" }, { id: "gpt-realtime" },
+        ] }));
+      }
       if (url !== "https://api.openai.com/v1/responses")
         throw new Error("Network disabled in test");
       const body = JSON.parse(init.body),

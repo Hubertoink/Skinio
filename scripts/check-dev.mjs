@@ -109,13 +109,12 @@ try {
   await page
     .getByRole("button", { name: "KI-Einstellungen", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Astra als Rastermodell wählen" })
-    .click();
-  await expect(page.getByLabel("Modell-ID", { exact: true })).toHaveValue(
+  await page.getByLabel("Modell-ID", { exact: true }).selectOption("__manual");
+  await page.getByLabel("Eigene Modell-ID", { exact: true }).fill("gpt-6-astra");
+  await expect(page.getByLabel("Eigene Modell-ID", { exact: true })).toHaveValue(
     "gpt-6-astra",
   );
-  await expect(page.getByLabel("Reasoning-Aufwand")).toHaveValue("low");
+  await expect(page.getByLabel("Reasoning-Aufwand")).toHaveValue("auto");
   await page.screenshot({ path: "artifacts/style-settings.png" });
   await page.getByRole("button", { name: "Einstellungen schließen" }).click();
   await page.screenshot({ path: "artifacts/style-profile.png" });

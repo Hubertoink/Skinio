@@ -29,7 +29,8 @@ try {
   await page
     .getByRole("button", { name: "KI-Einstellungen", exact: true })
     .click();
-  await page.getByLabel("Modell-ID", { exact: true }).fill("gpt-5.6-luna");
+  await page.getByLabel("Modell-ID", { exact: true }).selectOption("__manual");
+  await page.getByLabel("Eigene Modell-ID", { exact: true }).fill("gpt-5.6-luna");
   await page
     .getByRole("button", { name: "Einstellungen schließen", exact: true })
     .click();
@@ -90,7 +91,7 @@ try {
       filePath: outputPath,
     });
   }, projectPath);
-  await page.getByRole("button", { name: "Projekt", exact: true }).click();
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(page.getByRole("status")).toContainText(
     "Projektdatei gespeichert",
   );

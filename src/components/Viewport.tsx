@@ -257,7 +257,7 @@ export function Viewport(props: Props) {
           1 - (handFace.y + handFace.h - 0.5) / 64,
         );
       finger.position.set(direction * 1.0, -7.5, 0);
-      finger.rotation.z = direction * -0.3;
+      finger.rotation.z = direction * 0.3;
       fingers.add(finger);
     }
     fingers.position.y = -4;
